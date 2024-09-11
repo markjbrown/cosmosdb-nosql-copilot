@@ -133,7 +133,7 @@ public class OpenAiService
         {
             User = sessionId,
             ResponseFormat = ChatResponseFormat.JsonObject,
-            MaxTokens = 1000,
+            //MaxTokens = 1000,
             Temperature = 0.2f,
             TopP = 0.7f,
             FrequencyPenalty = 0,
@@ -203,18 +203,15 @@ public class OpenAiService
     public async Task<float[]> GetEmbeddingsAsync(string input)
     {
 
-        float[] embedding = new float[0];
-
         EmbeddingGenerationOptions options = new()
         {
             Dimensions = 1536
         };
+      
+        ClientResult<EmbeddingCollection> response = await _embeddingClient.GenerateEmbeddingsAsync(new List<string> { input }, options);
 
-        var response = await _embeddingClient.GenerateEmbeddingsAsync(new List<string> { input }, options);
-
-        var embeddings = response.Value[0].Vector;
-
-        embeddings.TryCopyTo(embedding);
+        float[] embedding = new float[response.Value[0].Vector.Length];
+        response.Value[0].Vector.Span.TryCopyTo(embedding);
 
         return embedding;
     }

@@ -6,6 +6,8 @@ using Azure.AI.OpenAI;
 using Azure.Core;
 using Azure.Identity;
 using Newtonsoft.Json;
+using OpenAI.Chat;
+using Cosmos.Copilot.Options;
 
 namespace Cosmos.Copilot.Services;
 
@@ -56,17 +58,25 @@ public class SemanticKernelService
     /// <remarks>
     /// This constructor will validate credentials and create a Semantic Kernel instance.
     /// </remarks>
-    public SemanticKernelService(string endpoint, string completionDeploymentName, string embeddingDeploymentName)
+    public SemanticKernelService(string endpoint, string completionDeploymentName, string embeddingDeploymentName, OpenAi openAi, CosmosDb cosmosDb)
     {
-        ArgumentNullException.ThrowIfNullOrEmpty(endpoint);
-        ArgumentNullException.ThrowIfNullOrEmpty(completionDeploymentName);
-        ArgumentNullException.ThrowIfNullOrEmpty(embeddingDeploymentName);
+        //ArgumentNullException.ThrowIfNullOrEmpty(endpoint);
+        //ArgumentNullException.ThrowIfNullOrEmpty(completionDeploymentName);
+        //ArgumentNullException.ThrowIfNullOrEmpty(embeddingDeploymentName);
+        ArgumentNullException.ThrowIfNull(openAi);
+        ArgumentNullException.ThrowIfNull(cosmosDb);
 
         TokenCredential credential = new DefaultAzureCredential();
         // Initialize the Semantic Kernel
+        //kernel = Kernel.CreateBuilder()
+        //    .AddAzureOpenAIChatCompletion(completionDeploymentName, endpoint, credential)
+        //    .AddAzureOpenAITextEmbeddingGeneration(embeddingDeploymentName, endpoint, credential)
+        //    .Build();
+
+        // Initialize the Semantic Kernel
         kernel = Kernel.CreateBuilder()
-            .AddAzureOpenAIChatCompletion(completionDeploymentName, endpoint, credential)
-            .AddAzureOpenAITextEmbeddingGeneration(embeddingDeploymentName, endpoint, credential)
+            .AddAzureOpenAIChatCompletion(openAi.CompletionDeploymentName, openAi.Endpoint, credential)
+            .AddAzureOpenAITextEmbeddingGeneration(openAi.EmbeddingDeploymentName, openAi.Endpoint, credential)
             .Build();
     }
 
@@ -78,14 +88,14 @@ public class SemanticKernelService
     /// <returns>Generated response along with tokens used to generate it.</returns>
     public async Task<(string completion, int tokens)> GetChatCompletionAsync(string sessionId, List<Message> contextWindow)
     {
-        var skChatHistory = new ChatHistory();
-        skChatHistory.AddSystemMessage(_systemPrompt);
+        var chatHistory = new ChatHistory();
+        chatHistory.AddSystemMessage(_systemPrompt);
 
         foreach (var message in contextWindow)
         {
-            skChatHistory.AddUserMessage(message.Prompt);
+            chatHistory.AddUserMessage(message.Prompt);
             if (message.Completion != string.Empty)
-                skChatHistory.AddAssistantMessage(message.Completion);
+                chatHistory.AddAssistantMessage(message.Completion);
         }
 
         PromptExecutionSettings settings = new()
@@ -99,12 +109,12 @@ public class SemanticKernelService
         };
 
 
-        var result = await kernel.GetRequiredService<IChatCompletionService>().GetChatMessageContentAsync(skChatHistory, settings);
+        var chatCompletion = kernel.GetRequiredService<IChatCompletionService>();
+        var chatMessage = await chatCompletion.GetChatMessageContentAsync(chatHistory, settings);
+        var usage = chatMessage.Metadata?["Usage"] as ChatTokenUsage;
 
-        CompletionsUsage completionUsage = (CompletionsUsage)result.Metadata!["Usage"]!;
-
-        string completion = result.Items[0].ToString()!;
-        int tokens = completionUsage.CompletionTokens;
+        string completion = chatMessage.Content!;
+        int tokens = usage?.TotalTokens ?? 0;
 
         return (completion, tokens);
     }
@@ -121,15 +131,15 @@ public class SemanticKernelService
         //Serialize List<Product> to a JSON string to send to OpenAI
         string productsString = JsonConvert.SerializeObject(products);
 
-        var skChatHistory = new ChatHistory();
-        skChatHistory.AddSystemMessage(_systemPromptRetailAssistant + productsString);
-        
+        var chatHistory = new ChatHistory();
+        chatHistory.AddSystemMessage(_systemPromptRetailAssistant + productsString);
+
 
         foreach (var message in contextWindow)
         {
-            skChatHistory.AddUserMessage(message.Prompt);
+            chatHistory.AddUserMessage(message.Prompt);
             if (message.Completion != string.Empty)
-                skChatHistory.AddAssistantMessage(message.Completion);
+                chatHistory.AddAssistantMessage(message.Completion);
         }
 
         PromptExecutionSettings settings = new()
@@ -143,12 +153,12 @@ public class SemanticKernelService
         };
 
 
-        var result = await kernel.GetRequiredService<IChatCompletionService>().GetChatMessageContentAsync(skChatHistory, settings);
+        var chatCompletion = kernel.GetRequiredService<IChatCompletionService>();
+        var chatMessage = await chatCompletion.GetChatMessageContentAsync(chatHistory, settings);
+        var usage = chatMessage.Metadata?["Usage"] as ChatTokenUsage;
 
-        CompletionsUsage completionUsage = (CompletionsUsage)result.Metadata!["Usage"]!;
-
-        string completion = result.Items[0].ToString()!;
-        int tokens = completionUsage.CompletionTokens;
+        string completion = chatMessage.Content!;
+        int tokens = usage?.TotalTokens ?? 0;
 
         return (completion, tokens);
     }
@@ -176,11 +186,10 @@ public class SemanticKernelService
     /// <returns>Summarization response from the OpenAI completion model deployment.</returns>
     public async Task<string> SummarizeConversationAsync(string conversation)
     {
-        //return await summarizePlugin.SummarizeConversationAsync(conversation, kernel);
 
-        var skChatHistory = new ChatHistory();
-        skChatHistory.AddSystemMessage(_summarizePrompt);
-        skChatHistory.AddUserMessage(conversation);
+        var chatHistory = new ChatHistory();
+        chatHistory.AddSystemMessage(_summarizePrompt);
+        chatHistory.AddUserMessage(conversation);
 
         PromptExecutionSettings settings = new()
         {
@@ -193,9 +202,9 @@ public class SemanticKernelService
         };
 
 
-        var result = await kernel.GetRequiredService<IChatCompletionService>().GetChatMessageContentAsync(skChatHistory, settings);
-
-        string completion = result.Items[0].ToString()!;
+        var chatCompletion = kernel.GetRequiredService<IChatCompletionService>();
+        var chatMessage = await chatCompletion.GetChatMessageContentAsync(chatHistory, settings);
+        string completion = chatMessage.Content!;
 
         return completion;
     }

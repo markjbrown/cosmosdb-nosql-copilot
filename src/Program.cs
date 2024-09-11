@@ -82,6 +82,7 @@ static class ProgramExtensions
         });
         services.AddSingleton<SemanticKernelService, SemanticKernelService>((provider) =>
         {
+            
             var semanticKernalOptions = provider.GetRequiredService<IOptions<SemanticKernel>>();
             if (semanticKernalOptions is null)
             {
@@ -92,7 +93,9 @@ static class ProgramExtensions
                 return new SemanticKernelService(
                     endpoint: semanticKernalOptions.Value?.Endpoint ?? String.Empty,
                     completionDeploymentName: semanticKernalOptions.Value?.CompletionDeploymentName ?? String.Empty,
-                    embeddingDeploymentName: semanticKernalOptions.Value?.EmbeddingDeploymentName ?? String.Empty
+                    embeddingDeploymentName: semanticKernalOptions.Value?.EmbeddingDeploymentName ?? String.Empty,
+                    openAi: provider.GetRequiredService<IOptions<OpenAi>>().Value,
+                    cosmosDb: provider.GetRequiredService<IOptions<CosmosDb>>().Value
                 );
             }
         });
